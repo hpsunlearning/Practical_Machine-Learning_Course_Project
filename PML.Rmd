@@ -1,0 +1,123 @@
+---
+title: "Practical Machine Learning: Course Project "
+author: "HPSUN"
+date: "2017年12月3日"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+This project is using personal activity data recorded from wearable devices to predict the type of human activity. Detail of this dataset can found here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har  
+
+## Data Exploration
+The data we have are two parts, testing has 20 objects, which are been used as greading, training has 19622 objects, used for model training and selection.
+```{r,cache=TRUE}
+library(caret)
+test_20 <- read.csv("pml-testing.csv")
+training <- read.csv("pml-training.csv")
+dim(test_20)
+dim(training)
+```
+First, let's do some data exploration.
+```{r,echo=FALSE,eval=FALSE}
+str(training)
+```
+We found that some numeric been transformed into factor, let's change them back.
+```{r}
+fn <- names(training)[sapply(training, class) == 'factor']
+fn <- fn[! fn %in% c("user_name","classe","new_window","cvtd_timestamp")]
+for (i in fn){
+    training[,i] <- as.numeric(training[,i])
+}
+```
+
+## Model Selection
+### Pretreat
+We remove nearly zero variance features; "timestamp","user_name", "X";high NA features;
+```{r,cache=TRUE}
+rm_1 <- nearZeroVar(training[,-ncol(training)])
+train1 <- training[,-rm_1]
+train2 <- train1[,-c(1:5)]
+train3 <- train2[,!colSums(is.na(train2))>10000]
+corr <- cor(train3[,-ncol(train3)])
+rm_2 <- findCorrelation(corr, cutoff = .8)
+train4 <- train3[,-rm_2]
+```
+Then，we divede train4 into train and test data, 80:20. Set trainControl and metric. 
+```{r}
+library(caret)
+set.seed(1)
+id <- createDataPartition(train4$classe, p = .8, list = FALSE, times = 1)
+train <- train4[id,]
+test <- train4[-id,]
+control <- trainControl(method="cv", number=10)
+metric <- "Accuracy"
+```
+
+### model1
+```{r,message=FALSE,cache=TRUE}
+set.seed(1)
+model1 <- train(classe~.,data=train,method="lda",metric=metric,trControl=control)
+```
+
+### model2
+```{r,message=FALSE,cache=TRUE}
+set.seed(2)
+model2 <- train(classe~.,data=train,method="knn",metric=metric,trControl=control)
+```
+
+### model3
+```{r,message=FALSE,cache=TRUE}
+set.seed(3)
+model3 <- train(classe~.,data=train,method="rpart",metric=metric,trControl=control)
+```
+
+### model4
+```{r,message=FALSE,cache=TRUE}
+set.seed(4)
+model4 <- train(classe~.,data=train,method="rf",metric=metric,trControl=control)
+```
+
+### model summary
+```{r}
+results <- resamples(list(lda=model1, knn=model2, rpart=model3, rf=model4))
+summary(results)
+```
+It looks like randomForest have the highest accuracy and kappa.  
+Next, we will use test set for evaluation.
+
+### test set performance
+```{r}
+pred1 <- predict(model1, test)
+res1 <- confusionMatrix(pred1,test$classe)
+pred2 <- predict(model2, test)
+res2 <- confusionMatrix(pred2,test$classe)
+pred3 <- predict(model3, test)
+res3 <- confusionMatrix(pred3,test$classe)
+pred4 <- predict(model4, test)
+res4 <- confusionMatrix(pred4,test$classe)
+res <- list(res1$overall[c(1,2)],res2$overall[c(1,2)],res3$overall[c(1,2)],res4$overall[c(1,2)])
+names(res) <- c("lda","knn","rpart","rf")
+res
+```
+
+RandomForest works best in the four models for testset.  
+train accuracy：0.9972615   
+test accuracy: 0.9979607   
+So, we will use RandomForest as the final model.
+
+### final prediction
+```{r}
+pred_20 <- predict(model4, test_20)
+names(pred_20) <- test_20$problem_id
+pred_20
+```
+
+
+
+
+
+
